@@ -45,8 +45,7 @@ tools = _import_file(
 ppocr = importlib.import_module('ppocr', 'paddleocr')
 ppstructure = importlib.import_module('ppstructure', 'paddleocr')
 from ppocr.utils.logging import get_logger
-
-logger = get_logger()
+from tools.infer import predict_system
 from ppocr.utils.utility import check_and_read, get_image_file_list, alpha_to_color, binarize_img
 from ppocr.utils.network import maybe_download, download_with_progressbar, is_link, confirm_model_dir_url
 from tools.infer.utility import draw_ocr, str2bool, check_gpu
@@ -60,11 +59,11 @@ __all__ = [
 ]
 
 SUPPORT_DET_MODEL = ['DB']
-VERSION = '2.7.5'
+VERSION = '2.7.0.3'
 SUPPORT_REC_MODEL = ['CRNN', 'SVTR_LCNet']
 BASE_DIR = os.path.expanduser("~/.paddleocr/")
 
-DEFAULT_OCR_MODEL_VERSION = 'PP-OCRv4'
+DEFAULT_OCR_MODEL_VERSION = 'PP-OCRv3'
 SUPPORT_OCR_MODEL_VERSION = ['PP-OCR', 'PP-OCRv2', 'PP-OCRv3', 'PP-OCRv4']
 DEFAULT_STRUCTURE_MODEL_VERSION = 'PP-StructureV2'
 SUPPORT_STRUCTURE_MODEL_VERSION = ['PP-Structure', 'PP-StructureV2']
@@ -80,7 +79,7 @@ MODEL_URLS = {
                     'url':
                     'https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar',
                 },
-                'ml': {
+                'arabic': {
                     'url':
                     'https://paddleocr.bj.bcebos.com/PP-OCRv3/multilingual/Multilingual_PP-OCRv3_det_infer.tar'
                 }
@@ -164,7 +163,7 @@ MODEL_URLS = {
                     'url':
                     'https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar',
                 },
-                'ml': {
+                'arabic': {
                     'url':
                     'https://paddleocr.bj.bcebos.com/PP-OCRv3/multilingual/Multilingual_PP-OCRv3_det_infer.tar'
                 }
@@ -366,6 +365,12 @@ MODEL_URLS = {
                     'url':
                     'https://paddleocr.bj.bcebos.com/dygraph_v2.0/table/en_ppocr_mobile_v2.0_table_structure_infer.tar',
                     'dict_path': 'ppocr/utils/dict/table_structure_dict.txt'
+                },
+                
+                'arabic': {
+                    'url':
+                    'https://paddleocr.bj.bcebos.com/dygraph_v2.0/table/en_ppocr_mobile_v2.0_table_structure_infer.tar',
+                    'dict_path': 'ppocr/utils/dict/table_structure_dict.txt'
                 }
             }
         },
@@ -377,6 +382,12 @@ MODEL_URLS = {
                     'dict_path': 'ppocr/utils/dict/table_structure_dict.txt'
                 },
                 'ch': {
+                    'url':
+                    'https://paddleocr.bj.bcebos.com/ppstructure/models/slanet/ch_ppstructure_mobile_v2.0_SLANet_infer.tar',
+                    'dict_path': 'ppocr/utils/dict/table_structure_dict_ch.txt'
+                },
+                
+                'arabic': {
                     'url':
                     'https://paddleocr.bj.bcebos.com/ppstructure/models/slanet/ch_ppstructure_mobile_v2.0_SLANet_infer.tar',
                     'dict_path': 'ppocr/utils/dict/table_structure_dict_ch.txt'
@@ -394,6 +405,13 @@ MODEL_URLS = {
                     'https://paddleocr.bj.bcebos.com/ppstructure/models/layout/picodet_lcnet_x1_0_fgd_layout_cdla_infer.tar',
                     'dict_path':
                     'ppocr/utils/dict/layout_dict/layout_cdla_dict.txt'
+                },
+                
+                'arabic': {
+                    'url':
+                    'https://paddleocr.bj.bcebos.com/ppstructure/models/layout/picodet_lcnet_x1_0_fgd_layout_infer.tar',
+                    'dict_path':
+                    'ppocr/utils/dict/layout_dict/layout_publaynet_dict.txt'
                 }
             }
         }
@@ -409,7 +427,6 @@ def parse_args(mMain=True):
     parser.add_argument("--det", type=str2bool, default=True)
     parser.add_argument("--rec", type=str2bool, default=True)
     parser.add_argument("--type", type=str, default='ocr')
-    parser.add_argument("--savefile", type=str2bool, default=False)
     parser.add_argument(
         "--ocr_version",
         type=str,
@@ -474,7 +491,7 @@ def parse_lang(lang):
         det_lang = "ch"
     elif lang == 'structure':
         det_lang = 'structure'
-    elif lang in ["en", "latin"]:
+    elif lang in ["en", "latin", 'arabic']:
         det_lang = "en"
     else:
         det_lang = "ml"
@@ -496,14 +513,17 @@ def get_model_config(type, version, model_type, lang):
         if model_type in model_urls[DEFAULT_MODEL_VERSION]:
             version = DEFAULT_MODEL_VERSION
         else:
+            print(model_urls[DEFAULT_MODEL_VERSION])
             logger.error('{} models is not support, we only support {}'.format(
                 model_type, model_urls[DEFAULT_MODEL_VERSION].keys()))
             sys.exit(-1)
 
     if lang not in model_urls[version][model_type]:
+        
         if lang in model_urls[DEFAULT_MODEL_VERSION][model_type]:
             version = DEFAULT_MODEL_VERSION
         else:
+            print(model_urls[version][model_type])
             logger.error(
                 'lang {} is not support, we only support {} for {} models'.
                 format(lang, model_urls[DEFAULT_MODEL_VERSION][model_type].keys(
@@ -517,19 +537,7 @@ def img_decode(content: bytes):
     return cv2.imdecode(np_arr, cv2.IMREAD_UNCHANGED)
 
 
-def check_img(img, alpha_color=(255, 255, 255)):
-    """
-    Check the image data. If it is another type of image file, try to decode it into a numpy array.
-    The inference network requires three-channel images, So the following channel conversions are done
-        single channel image: Gray to RGB R←Y,G←Y,B←Y
-        four channel image: alpha_to_color
-    args:
-        img: image data
-            file format: jpg, png and other image formats that opencv can decode, as well as gif and pdf formats
-            storage type: binary image, net image file, local image file
-        alpha_color: Background color in images in RGBA format
-        return: numpy.array (h, w, 3)
-    """
+def check_img(img):
     if isinstance(img, bytes):
         img = img_decode(img)
     if isinstance(img, str):
@@ -563,12 +571,9 @@ def check_img(img, alpha_color=(255, 255, 255)):
         if img is None:
             logger.error("error in loading image:{}".format(image_file))
             return None
-    # single channel image array.shape:h,w
     if isinstance(img, np.ndarray) and len(img.shape) == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-    # four channel image array.shape:h,w,c
-    if isinstance(img, np.ndarray) and len(img.shape) == 3 and img.shape[2] == 4:
-        img = alpha_to_color(img, alpha_color)
+
     return img
 
 
@@ -633,11 +638,17 @@ class PaddleOCR(predict_system.TextSystem):
         super().__init__(params)
         self.page_num = params.page_num
 
-    def ocr(self, img, det=True, rec=True, cls=True, bin=False, inv=False, alpha_color=(255, 255, 255)):
+    def ocr(self,
+            img,
+            det=True,
+            rec=True,
+            cls=True,
+            bin=False,
+            inv=False,
+            alpha_color=(255, 255, 255)):
         """
         OCR with PaddleOCR
-        
-        args:
+        args：
             img: img for OCR, support ndarray, img_path and list or ndarray
             det: use text detection or not. If False, only rec will be exec. Default is True
             rec: use text recognition or not. If False, only det will be exec. Default is True
@@ -655,13 +666,12 @@ class PaddleOCR(predict_system.TextSystem):
                 'Since the angle classifier is not initialized, it will not be used during the forward process'
             )
 
-        img = check_img(img, alpha_color)
+        img = check_img(img)
         # for infer pdf file
         if isinstance(img, list):
             if self.page_num > len(img) or self.page_num == 0:
-                imgs = img
-            else:
-                imgs = img[:self.page_num]
+                self.page_num = len(img)
+            imgs = img[:self.page_num]
         else:
             imgs = [img]
 
@@ -738,20 +748,26 @@ class PPStructure(StructureSystem):
                                             det_lang)
         params.det_model_dir, det_url = confirm_model_dir_url(
             params.det_model_dir,
-            os.path.join(BASE_DIR, 'whl', 'det', det_lang),
+            os.path.join(BASE_DIR, 'whl', 'det', 'en'),
             det_model_config['url'])
+        
+
         rec_model_config = get_model_config('OCR', params.ocr_version, 'rec',
                                             lang)
         params.rec_model_dir, rec_url = confirm_model_dir_url(
             params.rec_model_dir,
-            os.path.join(BASE_DIR, 'whl', 'rec', lang), rec_model_config['url'])
+            os.path.join(BASE_DIR, 'whl', 'rec', 'ar'), rec_model_config['url'])
+        
+
         table_model_config = get_model_config(
-            'STRUCTURE', params.structure_version, 'table', table_lang)
+            'STRUCTURE', params.structure_version, 'table', 'en')
         params.table_model_dir, table_url = confirm_model_dir_url(
             params.table_model_dir,
             os.path.join(BASE_DIR, 'whl', 'table'), table_model_config['url'])
+        
+
         layout_model_config = get_model_config(
-            'STRUCTURE', params.structure_version, 'layout', lang)
+            'STRUCTURE', params.structure_version, 'layout', 'ch')
         params.layout_model_dir, layout_url = confirm_model_dir_url(
             params.layout_model_dir,
             os.path.join(BASE_DIR, 'whl', 'layout'), layout_model_config['url'])
@@ -773,8 +789,8 @@ class PPStructure(StructureSystem):
         logger.debug(params)
         super().__init__(params)
 
-    def __call__(self, img, return_ocr_result_in_table=False, img_idx=0, alpha_color=(255, 255, 255)):
-        img = check_img(img, alpha_color)
+    def __call__(self, img, return_ocr_result_in_table=False, img_idx=0):
+        img = check_img(img)
         res, _ = super().__call__(
             img, return_ocr_result_in_table, img_idx=img_idx)
         return res
@@ -811,25 +827,10 @@ def main():
                                 inv=args.invert,
                                 alpha_color=args.alphacolor)
             if result is not None:
-                lines = []
                 for idx in range(len(result)):
                     res = result[idx]
                     for line in res:
                         logger.info(line)
-                        val = '['
-                        for box in line[0]:
-                            val += str(box[0]) + ',' + str(box[1]) + ','
-
-                        val = val[:-1]
-                        val += '],' + line[1][0] + ',' + str(line[1][1]) + '\n'
-                        lines.append(val)
-                if args.savefile:
-                    if os.path.exists(args.output) is False:
-                        os.mkdir(args.output)
-                    outfile = args.output + '/' + img_name + '.txt'
-                    with open(outfile,'w',encoding='utf-8') as f:
-                        f.writelines(lines)
-                     
         elif args.type == 'structure':
             img, flag_gif, flag_pdf = check_and_read(img_path)
             if not flag_gif and not flag_pdf:
