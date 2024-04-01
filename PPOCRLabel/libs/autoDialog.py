@@ -55,6 +55,7 @@ class Worker(QThread):
                             chars = res[1][0]
                             cond = res[1][1]
                             posi = res[0]
+                            ##############################################################################################
                             strs += "Transcription: " + chars[::-1] + " Probability: " + str(cond) + \
                                     " Location: " + json.dumps(posi) +'\n'
                         # Sending large amounts of data repeatedly through pyqtSignal may affect the program efficiency
