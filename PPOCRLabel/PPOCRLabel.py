@@ -99,8 +99,9 @@ class MainWindow(QMainWindow):
                              det=True,
                              cls=True,
                              use_gpu=gpu,
-                             lang=lang,
-                             show_log=False)
+                             lang='ar',
+                             show_log=False)#,
+                             #rec_model_dir = 'arabic_PP-OCRv3_rec_infer')
         self.table_ocr = PPStructure(use_pdserving=False,
                                      use_gpu=gpu,
                                      lang=lang,
@@ -109,7 +110,7 @@ class MainWindow(QMainWindow):
 
         if os.path.exists('./data/paddle.png'):
             result = self.ocr.ocr('./data/paddle.png', cls=True, det=True)
-            result = self.table_ocr('./data/paddle.png', return_ocr_result_in_table=True)
+            #result = self.table_ocr('./data/paddle.png', return_ocr_result_in_table=True)
 
         # For loading all image under a directory
         self.mImgList = []
@@ -1222,7 +1223,7 @@ class MainWindow(QMainWindow):
             shapes = [format_shape(shape) for shape in self.canvas.shapes if shape.line_color != DEFAULT_LOCK_COLOR]
         # Can add differrent annotation formats here
         for box in self.result_dic:
-            trans_dic = {"label": box[1][0], "points": box[0], "difficult": False}
+            trans_dic = {"label": box[1][0][::-1], "points": box[0], "difficult": False}
             if self.kie_mode:
                 if len(box) == 3:
                     trans_dic.update({"key_cls": box[2]})
@@ -1235,6 +1236,7 @@ class MainWindow(QMainWindow):
         try:
             trans_dic = []
             for box in shapes:
+                ##########################################################################################################
                 trans_dict = {"transcription": box['label'], "points": box['points'], "difficult": box['difficult']}
                 if self.kie_mode:
                     trans_dict.update({"key_cls": box['key_cls']})
@@ -1911,7 +1913,8 @@ class MainWindow(QMainWindow):
             for shape in self.canvas.lockedShapes:
                 box = [[int(p[0] * width), int(p[1] * height)] for p in shape['ratio']]
                 # assert len(box) == 4
-                result = [(shape['transcription'], 1)]
+                ################################################################################################
+                result = [(shape['transcription'][::-1], 1)]
                 result.insert(0, box)
                 self.result_dic_locked.append(result)
             self.result_dic += self.result_dic_locked
@@ -2207,7 +2210,9 @@ class MainWindow(QMainWindow):
                 result = self.ocr.ocr(img_crop, cls=True, det=False)[0]
                 if result[0][0] != '':
                     if shape.line_color == DEFAULT_LOCK_COLOR:
-                        shape.label = result[0][0]
+                        #########################################################################
+                        shape.label = result[0][0][::-1]
+                       
                         result.insert(0, box)
                         if self.kie_mode:
                             result.append(kie_cls)
@@ -2272,7 +2277,8 @@ class MainWindow(QMainWindow):
                 if result[1][0] == shape.label:
                     print('label no change')
                 else:
-                    shape.label = result[1][0]
+                    ###################################################################3
+                    shape.label = result[1][0][::-1]
             else:
                 print('Can not recognise the box')
                 if self.noLabelText == shape.label:
@@ -2422,7 +2428,9 @@ class MainWindow(QMainWindow):
                 for _bbox in bboxes:
                     patch = get_rotate_crop_image(img_crop, np.array(_bbox, np.float32))
                     rec_res = self.ocr.ocr(patch, det=False, rec=True, cls=False)[0]
-                    text = rec_res[0][0]
+
+                    ########################################################################
+                    text = rec_res[0][0][::-1]
                     if text != '':
                         texts += text + ('' if text[0].isalpha() else ' ') # add space between english word
                         probs += rec_res[0][1]
@@ -2538,7 +2546,7 @@ class MainWindow(QMainWindow):
         self.panel.setAlignment(Qt.AlignLeft)
         self.comboBox = QComboBox()
         self.comboBox.setObjectName("comboBox")
-        self.comboBox.addItems(['Chinese & English', 'English', 'French', 'German', 'Korean', 'Japanese'])
+        self.comboBox.addItems(['Chinese & English', 'English', 'French', 'German', 'Korean', 'Japanese', 'Arabic'])
         vbox.addWidget(self.panel)
         vbox.addWidget(self.comboBox)
         self.dialog = QDialog()
@@ -2565,14 +2573,15 @@ class MainWindow(QMainWindow):
     def modelChoose(self):
         print(self.comboBox.currentText())
         lg_idx = {'Chinese & English': 'ch', 'English': 'en', 'French': 'french', 'German': 'german',
-                  'Korean': 'korean', 'Japanese': 'japan'}
+                  'Korean': 'korean', 'Japanese': 'japan' , 'Arabic': 'arabic'}
         del self.ocr
         self.ocr = PaddleOCR(use_pdserving=False, use_angle_cls=True, det=True, cls=True, use_gpu=False,
-                             lang=lg_idx[self.comboBox.currentText()])
+                             lang=lg_idx[self.comboBox.currentText()])#,
+                             #rec_model_dir = 'arabic_PP-OCRv3_rec_infer')
         del self.table_ocr
         self.table_ocr = PPStructure(use_pdserving=False,
                                      use_gpu=False,
-                                     lang=lg_idx[self.comboBox.currentText()],
+                                     lang='en',
                                      layout=False,
                                      show_log=False)
         self.dialog.close()
@@ -2667,6 +2676,8 @@ class MainWindow(QMainWindow):
                         img_name = os.path.splitext(os.path.basename(idx))[0] + '_crop_' + str(i) + '.jpg'
                         cv2.imwrite(crop_img_dir + img_name, img_crop)
                         f.write('crop_img/' + img_name + '\t')
+
+                        ############################### wORKING #########################################
                         f.write(label['transcription'] + '\n')
                 except Exception as e:
                     ques_img.append(key)
